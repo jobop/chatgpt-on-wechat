@@ -5,21 +5,23 @@ from config import conf
 from common.log import logger
 import openai
 import time
-
+import random
 user_session = dict()
-
+keys=conf().get('open_ai_api_keys')
 # OpenAI对话模型API (可用)
 class OpenAIBot(Bot):
-    def __init__(self):
-        openai.api_key = conf().get('open_ai_api_key')
 
 
     def reply(self, query, context=None):
+        key_index = random.randint(0, len(keys)-1)
+        key = keys[key_index]
+        logger.info("[OPEN_AI]选取了 open api key ={}".format(key))
+        openai.api_key =key
         # acquire reply content
         if not context or not context.get('type') or context.get('type') == 'TEXT':
             logger.info("[OPEN_AI] query={}".format(query))
             from_user_id = context['from_user_id']
-            if query == '#清除记忆':
+            if query == '清空你的记忆。' or query == '清空你的记忆':
                 Session.clear_session(from_user_id)
                 return '记忆已清除'
 
@@ -48,7 +50,7 @@ class OpenAIBot(Bot):
                 stop=["\n\n\n"]
             )
             res_content = response.choices[0]['text'].strip().replace('<|endoftext|>', '')
-            logger.info("[OPEN_AI] reply={}".format(res_content))
+            logger.info("[OPEN_AI] text reply={}".format(res_content))
             return res_content
         except openai.error.RateLimitError as e:
             # rate limit exception
