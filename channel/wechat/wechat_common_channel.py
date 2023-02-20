@@ -7,7 +7,7 @@
 wechat common channel
 """
 import werobot
-
+from werobot.replies import ArticlesReply, Article
 import json
 
 from channel.channel import Channel
@@ -33,21 +33,48 @@ def handler_text_msg(msg,session):
     elif msg.type == "voice":
         logger.info("[WX]########receive msg: " + msg.recognition)
 
+    from_user_id = msg.source
+    if msg.type == "text":
+        content = msg.content
+    elif msg.type == "voice":
+        content= msg.recognition
+    else:
+        content = msg.content
+
+    channel = WechatCommonChannel()
+
     send_time = msg.time
     # 因为session本来就是以用户纬度隔离的，所以这里以消息时间作为key就可以
     msgKey = str(send_time)
 
     resp , need = need_continue(session,msgKey,msgKey+"@count")
     if not need:
-        logger.info("[WX]########resp msg: " + resp)
+        logger.info("[WX]########resp msg from cache: " + resp)
+        render(msg,content,channel,resp,from_user_id)
         return resp
 
 
-    reply = WechatCommonChannel().handle(msg)
+    reply_text = channel.handle(msg)
     # wx会5秒内不返回则重试，重试3次，这样会导致程序每次都重新处理，而且还处理不完，这里把key和应答存session中，有则直接返回，没有就往下走，这样可以延长思考时间
-    session[msgKey] = reply
-    logger.info("[WX]########resp msg: " + reply)
-    return reply
+    session[msgKey] = reply_text
+    logger.info("[WX]########resp msg from openai: " + reply_text)
+    return render(msg,content,channel,reply_text,from_user_id)
+
+def render(msg,query,channel,reply_text,from_user_id):
+    img_match_prefix = channel.check_prefix(query, conf().get('image_create_prefix'))
+    if img_match_prefix:
+        reply = ArticlesReply(message=msg)
+        article = Article(
+                    title="这个画得满意吗？",
+                    description=query,
+                    img=reply_text,
+                    url=reply_text
+                )
+        reply.add_article(article)
+        return reply
+    else:
+        return reply_text
+
 
 def need_continue(session,msgKey,msgCountKey):
     req_count_str = session.get(msgCountKey)
@@ -131,7 +158,8 @@ class WechatCommonChannel(Channel):
                 context['type'] = 'IMAGE_CREATE'
             reply_text = super().build_reply_content(query, context)
             if reply_text:
-                return self.send(reply_text, reply_user_id)
+                return reply_text
+
         except Exception as e:
             logger.exception(e)
             return "系统开小差了"

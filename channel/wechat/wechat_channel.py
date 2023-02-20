@@ -138,6 +138,7 @@ class WechatChannel(Channel):
         except Exception as e:
             logger.exception(e)
 
+
     def _do_send_group(self, query, msg):
         if not query:
             return
