@@ -43,6 +43,7 @@ def handler_text_msg(msg,session):
 
     channel = WechatCommonChannel()
 
+
     send_time = msg.time
     # 因为session本来就是以用户纬度隔离的，所以这里以消息时间作为key就可以
     msgKey = str(send_time)
@@ -50,9 +51,14 @@ def handler_text_msg(msg,session):
     resp , need = need_continue(session,msgKey,msgKey+"@count")
     if not need:
         logger.info("[WX]########resp msg from cache: " + resp)
-        render(msg,content,channel,resp,from_user_id)
-        return resp
+        return render(msg,content,channel,resp,from_user_id)
 
+    img_match_prefix = channel.check_prefix(content, conf().get('image_create_prefix'))
+    if img_match_prefix:
+        limitResp,limited=limitImageCount(session,from_user_id)
+        if limited:
+            logger.info("[WX]########resp msg from limited: " + limitResp+" fromUserId:"+from_user_id)
+            return limitResp
 
     reply_text = channel.handle(msg)
     # wx会5秒内不返回则重试，重试3次，这样会导致程序每次都重新处理，而且还处理不完，这里把key和应答存session中，有则直接返回，没有就往下走，这样可以延长思考时间
@@ -60,12 +66,26 @@ def handler_text_msg(msg,session):
     logger.info("[WX]########resp msg from openai: " + reply_text)
     return render(msg,content,channel,reply_text,from_user_id)
 
+def limitImageCount(session,from_user_id):
+    if from_user_id == "ofNNpt4TMGev5tx5vdBVgjaJYZ-M":
+        return "",False
+
+    image_count_str = session.get(from_user_id+"@imageCount")
+    if not image_count_str:
+        image_count = 0
+    else:
+        image_count=int(image_count_str)
+    if image_count>3:
+        return "一个人最多只能让我画3张图片，你已经画了"+str(image_count)+"张了" , True
+    session[from_user_id+"@imageCount"]=str(image_count + 1)
+    return "",False
+
 def render(msg,query,channel,reply_text,from_user_id):
     img_match_prefix = channel.check_prefix(query, conf().get('image_create_prefix'))
     if img_match_prefix:
         reply = ArticlesReply(message=msg)
         article = Article(
-                    title="这个画得满意吗？",
+                    title="这个画得咋样？不过最多只能画3张哈",
                     description=query,
                     img=reply_text,
                     url=reply_text
